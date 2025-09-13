@@ -1,0 +1,6 @@
+.env
+docker-volumes/
+/generated/prisma
+/node_modules
+.idea
+/dist
