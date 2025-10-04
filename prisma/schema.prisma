@@ -7,10 +7,86 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum FieldType {
+  NUMBER
+  SINGLE_LINE_TEXT
+  LONG_TEXT
+  SINGLE_SELECT
+  MULTI_SELECT
+  CHECKBOX
+  SINGLE_USER
+  MULTI_USER
+  SINGLE_LINK
+  MULTI_LINK
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  bases Base[]
+}
+
+model Base {
+  id        String   @id @default(uuid())
+  name      String
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User     @relation(fields: [createdBy], references: [id])
+  fields  Field[]
+  records Record[]
+}
+
+model Field {
+  id        String    @id @default(uuid())
+  baseId    String
+  name      String
+  type      FieldType
+  config    Json?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  base    Base     @relation(fields: [baseId], references: [id])
+  options Option[]
+  values  Value[]
+}
+
+model Option {
+  id        String   @id @default(uuid())
+  fieldId   String
+  name      String
+  color     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  field Field @relation(fields: [fieldId], references: [id])
+}
+
+model Record {
+  id        String   @id @default(uuid())
+  baseId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  base   Base    @relation(fields: [baseId], references: [id])
+  values Value[]
+}
+
+model Value {
+  id        String   @id @default(uuid())
+  recordId  String
+  fieldId   String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  record Record @relation(fields: [recordId], references: [id])
+  field  Field  @relation(fields: [fieldId], references: [id])
+
+  @@unique([recordId, fieldId])
 }
