@@ -51,7 +51,7 @@ model Field {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  base    Base     @relation(fields: [baseId], references: [id])
+  base    Base     @relation(fields: [baseId], references: [id], onDelete: Cascade)
   options Option[]
   values  Value[]
 }
@@ -64,7 +64,7 @@ model Option {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  field Field @relation(fields: [fieldId], references: [id])
+  field Field @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 }
 
 model Record {
@@ -73,7 +73,7 @@ model Record {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  base   Base    @relation(fields: [baseId], references: [id])
+  base   Base    @relation(fields: [baseId], references: [id], onDelete: Cascade)
   values Value[]
 }
 
@@ -85,8 +85,8 @@ model Value {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  record Record @relation(fields: [recordId], references: [id])
-  field  Field  @relation(fields: [fieldId], references: [id])
+  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  field  Field  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
 
   @@unique([recordId, fieldId])
 }

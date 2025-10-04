@@ -7,6 +7,7 @@ import {
   Req,
   UseGuards,
   NotFoundException,
+  Delete,
 } from '@nestjs/common';
 import { Base } from '@prisma/client';
 import { BasesService } from './bases.service';
@@ -61,5 +62,15 @@ export class BasesController {
     }
 
     return base;
+  }
+
+  @Delete(':id')
+  @ApiBearerAuth('JWT-auth')
+  @ApiParam({ name: 'id', description: 'ID базы' })
+  @ApiOperation({ summary: 'Удалить базу по ID' })
+  @ApiResponse({ status: 200, description: 'База  удалена' })
+  @ApiResponse({ status: 404, description: 'База не найдена' })
+  async deleteOne(@Param('id') id: string) {
+    return this.basesService.delete(id);
   }
 }

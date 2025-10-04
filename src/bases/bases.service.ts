@@ -21,4 +21,8 @@ export class BasesService {
   async findOne(id: string) {
     return this.prisma.base.findFirst({ where: { id } });
   }
+
+  async delete(id: string) {
+    return this.prisma.base.delete({ where: { id } });
+  }
 }
