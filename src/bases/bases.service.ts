@@ -19,7 +19,10 @@ export class BasesService {
   }
 
   async findOne(id: string) {
-    return this.prisma.base.findFirst({ where: { id } });
+    return this.prisma.base.findFirst({
+      where: { id },
+      include: { fields: true },
+    });
   }
 
   async delete(id: string) {

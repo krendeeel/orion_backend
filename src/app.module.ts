@@ -7,6 +7,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { BasesModule } from './bases/bases.module';
+import { FieldsModule } from './fields/fields.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BasesModule } from './bases/bases.module';
     UsersModule,
     AuthModule,
     BasesModule,
+    FieldsModule,
     ConfigModule.forRoot({ isGlobal: true }),
   ],
   controllers: [AppController],
