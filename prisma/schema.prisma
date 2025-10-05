@@ -18,6 +18,7 @@ enum FieldType {
   MULTI_USER
   SINGLE_LINK
   MULTI_LINK
+  NAME
 }
 
 model User {
