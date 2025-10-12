@@ -20,6 +20,8 @@ enum FieldType {
   MULTI_LINK
   NAME
   AUTHOR
+  CREATED_BY
+  CREATED_AT
 }
 
 model User {
