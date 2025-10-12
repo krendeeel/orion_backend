@@ -19,6 +19,7 @@ enum FieldType {
   SINGLE_LINK
   MULTI_LINK
   NAME
+  AUTHOR
 }
 
 model User {

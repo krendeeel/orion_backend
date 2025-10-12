@@ -8,7 +8,6 @@ import {
   Get,
   Query,
 } from '@nestjs/common';
-import { Record } from '@prisma/client';
 import { RecordsService } from './records.service';
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { CreateRecordDto } from './dto/create-record.dto';
@@ -34,7 +33,7 @@ export class RecordsController {
   @ApiBody({ type: CreateRecordDto })
   @ApiOperation({ summary: 'Создать новую запись' })
   @ApiResponse({ status: 201, description: 'Запись создана' })
-  async create(@Body() createRecordDto: CreateRecordDto): Promise<Record> {
+  async create(@Body() createRecordDto: CreateRecordDto) {
     return this.recordsService.create(createRecordDto);
   }
 

@@ -6,7 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRecordDto } from './dto/create-record.dto';
 import { GetRecordsDto, SortOrder } from './dto/get-records.dto';
-import { Prisma } from '@prisma/client';
+import { Field, FieldType, Prisma, Record, Value } from '@prisma/client';
 import { InputJsonValue } from '@prisma/client/runtime/library';
 
 @Injectable()
@@ -22,9 +22,12 @@ export class RecordsService {
       throw new NotFoundException('Base not found');
     }
 
-    return this.prisma.record.create({
+    const record = await this.prisma.record.create({
       data: { baseId: createRecordDto.baseId },
+      include: { values: { include: { field: true } } },
     });
+
+    return this.formatRecord(record);
   }
 
   async findAll(dto: GetRecordsDto) {
@@ -81,12 +84,12 @@ export class RecordsService {
         orderBy,
         skip,
         take: limit,
-        include: { values: { include: { field: true } } }, // Включаем значения и поля для полноты
+        include: { values: { include: { field: true } } },
       }),
     ]);
 
     return {
-      data: records,
+      data: records.map((record) => this.formatRecord(record)),
       meta: {
         total,
         page,
@@ -106,5 +109,26 @@ export class RecordsService {
     }
 
     return this.prisma.record.delete({ where: { id } });
+  }
+
+  private formatRecord(
+    record: Record & { values: Array<Value & { field: Field }> },
+  ) {
+    const values: {
+      [key: string]: { fieldId: string; fieldType: FieldType; value: unknown };
+    } = {};
+
+    for (const value of record.values) {
+      values[value.field.id] = {
+        value: value.value,
+        fieldId: value.field.id,
+        fieldType: value.field.type,
+      };
+    }
+
+    return {
+      id: record.id,
+      values,
+    };
   }
 }

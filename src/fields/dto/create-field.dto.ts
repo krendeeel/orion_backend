@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsOptional } from 'class-validator';
+import { IsString, IsEnum, IsOptional, IsJSON } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { FieldType } from '@prisma/client';
 
@@ -25,5 +25,6 @@ export class CreateFieldDto {
     example: { decimals: 2 },
   })
   @IsOptional()
-  config?: any;
+  @IsJSON()
+  config?: unknown;
 }
