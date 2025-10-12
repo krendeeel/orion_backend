@@ -28,7 +28,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bases Base[]
+  bases         Base[]
+  valuesCreated Value[] @relation("ValueCreatedBy")
+  valuesUpdated Value[] @relation("ValueUpdatedBy")
 }
 
 model Base {
@@ -85,9 +87,13 @@ model Value {
   value     Json
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
 
-  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
-  field  Field  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  record      Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  field       Field  @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  userCreated User?  @relation("ValueCreatedBy", fields: [createdBy], references: [id])
+  userUpdated User?  @relation("ValueUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([recordId, fieldId])
 }

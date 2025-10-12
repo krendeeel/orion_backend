@@ -3,7 +3,6 @@ import {
   Post,
   Body,
   Param,
-  Req,
   UseGuards,
   Delete,
   Get,
@@ -35,11 +34,8 @@ export class RecordsController {
   @ApiBody({ type: CreateRecordDto })
   @ApiOperation({ summary: 'Создать новую запись' })
   @ApiResponse({ status: 201, description: 'Запись создана' })
-  async create(
-    @Body() createRecordDto: CreateRecordDto,
-    @Req() req: Request & { user: { userId: string } },
-  ): Promise<Record> {
-    return this.recordsService.create(createRecordDto, req.user.userId);
+  async create(@Body() createRecordDto: CreateRecordDto): Promise<Record> {
+    return this.recordsService.create(createRecordDto);
   }
 
   @Get()
@@ -84,11 +80,8 @@ export class RecordsController {
   })
   @ApiResponse({ status: 200, description: 'Список записей' })
   @ApiResponse({ status: 404, description: 'База не найдена' })
-  findAll(
-    @Query() query: GetRecordsDto,
-    @Req() req: Request & { user: { userId: string } },
-  ) {
-    return this.recordsService.findAll(query, req.user.userId);
+  findAll(@Query() query: GetRecordsDto) {
+    return this.recordsService.findAll(query);
   }
 
   @Delete(':id')
