@@ -31,9 +31,11 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bases         Base[]
-  valuesCreated Value[] @relation("ValueCreatedBy")
-  valuesUpdated Value[] @relation("ValueUpdatedBy")
+  bases              Base[]
+  valuesCreated      Value[]              @relation("ValueCreatedBy")
+  valuesUpdated      Value[]              @relation("ValueUpdatedBy")
+  Meeting            Meeting[]
+  MeetingParticipant MeetingParticipant[]
 }
 
 model Base {
@@ -99,4 +101,31 @@ model Value {
   userUpdated User?  @relation("ValueUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([recordId, fieldId])
+}
+
+model Meeting {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  startTime   DateTime
+  endTime     DateTime
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  participants MeetingParticipant[]
+  user         User                 @relation(fields: [createdBy], references: [id])
+}
+
+model MeetingParticipant {
+  id        String    @id @default(uuid())
+  meetingId String
+  userId    String
+  joinedAt  DateTime?
+  leftAt    DateTime?
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([meetingId, userId])
 }

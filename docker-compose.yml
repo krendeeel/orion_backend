@@ -15,9 +15,26 @@ services:
     networks:
       - nestjs_network
 
+  minio:
+    image: minio/minio:latest
+    container_name: nestjs_minio
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-minioadmin}
+    ports:
+      - "9000:9000" # MinIO API
+      - "9001:9001" # MinIO Console (Web UI)
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    networks:
+      - nestjs_network
+
 volumes:
   postgres_data:
     name: nestjs_postgres_data
+  minio_data:
+    name: nestjs_minio_data
 
 networks:
   nestjs_network:

@@ -10,6 +10,7 @@ import { BasesModule } from './bases/bases.module';
 import { FieldsModule } from './fields/fields.module';
 import { RecordsModule } from './records/records.module';
 import { ValuesModule } from './values/values.module';
+import { MeetingsModule } from './meetings/meetings.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { ValuesModule } from './values/values.module';
     FieldsModule,
     RecordsModule,
     ValuesModule,
+    MeetingsModule,
     ConfigModule.forRoot({ isGlobal: true }),
   ],
   controllers: [AppController],
