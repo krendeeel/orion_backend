@@ -24,6 +24,13 @@ enum FieldType {
   CREATED_AT
 }
 
+enum FileType {
+  IMAGE
+  PDF
+  DOCUMENT
+  OTHER
+}
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
@@ -31,11 +38,19 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  bases              Base[]
-  valuesCreated      Value[]              @relation("ValueCreatedBy")
-  valuesUpdated      Value[]              @relation("ValueUpdatedBy")
-  Meeting            Meeting[]
-  MeetingParticipant MeetingParticipant[]
+  bases               Base[]
+  valuesCreated       Value[]              @relation("ValueCreatedBy")
+  valuesUpdated       Value[]              @relation("ValueUpdatedBy")
+  meetings            Meeting[]
+  meetingParticipants MeetingParticipant[]
+  files               File[]               @relation("FileOwner")
+  folders             Folder[]             @relation("FolderOwner")
+  filePermissions     FilePermission[]     @relation("FilePermissionUser")
+  folderPermissions   FolderPermission[]   @relation("FolderPermissionUser")
+  filesCreated        File[]               @relation("FileCreatedBy")
+  filesUpdated        File[]               @relation("FileUpdatedBy")
+  foldersCreated      Folder[]             @relation("FolderCreatedBy")
+  foldersUpdated      Folder[]             @relation("FolderUpdatedBy")
 }
 
 model Base {
@@ -128,4 +143,71 @@ model MeetingParticipant {
   user    User    @relation(fields: [userId], references: [id])
 
   @@unique([meetingId, userId])
+}
+
+model File {
+  id        String   @id @default(uuid())
+  name      String
+  format    FileType
+  path      String
+  folderId  String?  @map("folder_id")
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String
+  updatedBy String
+  size      Int
+
+  owner       User             @relation("FileOwner", fields: [ownerId], references: [id])
+  folder      Folder?          @relation("FileToFolder", fields: [folderId], references: [id], onDelete: SetNull)
+  creator     User             @relation("FileCreatedBy", fields: [createdBy], references: [id])
+  updater     User             @relation("FileUpdatedBy", fields: [updatedBy], references: [id])
+  permissions FilePermission[] @relation("FilePermissions")
+}
+
+model Folder {
+  id        String   @id @default(uuid())
+  name      String
+  parentId  String?
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String
+  updatedBy String
+
+  owner       User               @relation("FolderOwner", fields: [ownerId], references: [id])
+  parent      Folder?            @relation("FolderParent", fields: [parentId], references: [id], onDelete: SetNull)
+  children    Folder[]           @relation("FolderParent")
+  files       File[]             @relation("FileToFolder")
+  creator     User               @relation("FolderCreatedBy", fields: [createdBy], references: [id])
+  updater     User               @relation("FolderUpdatedBy", fields: [updatedBy], references: [id])
+  permissions FolderPermission[] @relation("FolderPermissions")
+}
+
+model FilePermission {
+  id        String   @id @default(uuid())
+  fileId    String
+  userId    String
+  canRead   Boolean  @default(true)
+  canWrite  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  file File @relation("FilePermissions", fields: [fileId], references: [id], onDelete: Cascade)
+  user User @relation("FilePermissionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, userId])
+}
+
+model FolderPermission {
+  id        String   @id @default(uuid())
+  folderId  String
+  userId    String
+  canRead   Boolean  @default(true)
+  canWrite  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  folder Folder @relation("FolderPermissions", fields: [folderId], references: [id], onDelete: Cascade)
+  user   User   @relation("FolderPermissionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([folderId, userId])
 }
