@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { S3 } from 'aws-sdk';
 import { ConfigService } from '@nestjs/config';
 import { v4 as uuidv4 } from 'uuid';
+import { Readable } from 'stream';
 
 export enum FileType {
   IMAGE = 'IMAGE',
@@ -29,27 +30,37 @@ export class FilesService {
       region: this.configService.get('AWS_REGION'),
       accessKeyId: this.configService.get('AWS_ACCESS_KEY_ID'),
       secretAccessKey: this.configService.get('AWS_SECRET_ACCESS_KEY'),
-      endpoint: endpoint ? endpoint : undefined, // Для MinIO: http://nestjs_minio:9000
+      endpoint: endpoint ? endpoint : undefined, // Для MinIO: http://localhost:9000 (локально) или http://nestjs_minio:9000 (в Docker)
       s3ForcePathStyle: true, // Требуется для MinIO
       signatureVersion: 'v4', // Совместимость с MinIO
     });
 
-    // Создаём бакет при инициализации, если он не существует
-    this.createBucketIfNotExists();
+    // Создаём бакет при инициализации
+    this.createBucketIfNotExists().catch((error) => {
+      console.error('Failed to initialize S3 bucket:', error);
+      throw new InternalServerErrorException(
+        'Failed to connect to storage service',
+      );
+    });
   }
 
   private async createBucketIfNotExists() {
     const bucket = this.configService.get<string>('AWS_S3_BUCKET')!;
     try {
       await this.s3.headBucket({ Bucket: bucket }).promise();
+      console.log(`Bucket ${bucket} already exists`);
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-expect-error
-      if (error.statusCode === 404) {
+      if (error.code === 'NotFound' || error.statusCode === 404) {
         await this.s3.createBucket({ Bucket: bucket }).promise();
         console.log(`Bucket ${bucket} created successfully`);
       } else {
-        throw error;
+        throw new InternalServerErrorException(
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          `Failed to check or create bucket: ${error.message}`,
+        );
       }
     }
   }
@@ -57,21 +68,25 @@ export class FilesService {
   async uploadFile(
     file: Express.Multer.File,
     userId: string,
-    folderId: string | null | undefined,
+    folderId?: string,
   ) {
-    console.log(`Uploading file: ${folderId}`);
-    // Проверяем, существует ли папка, если folderId указан
-    if (folderId) {
+    console.log('uploadFile called with:', { userId, folderId });
+
+    const normalizedFolderId =
+      folderId && folderId.trim() !== '' ? folderId : null;
+
+    if (normalizedFolderId) {
       const folder = await this.prisma.folder.findUnique({
-        where: { id: folderId },
+        where: { id: normalizedFolderId },
       });
       if (!folder) {
-        throw new NotFoundException(`Folder with ID ${folderId} not found`);
+        throw new NotFoundException(
+          `Folder with ID ${normalizedFolderId} not found`,
+        );
       }
-      // Проверяем, имеет ли пользователь доступ к папке
       if (
         folder.ownerId !== userId &&
-        !(await this.hasFolderWritePermission(folderId, userId))
+        !(await this.hasFolderWritePermission(normalizedFolderId, userId))
       ) {
         throw new ForbiddenException('No permission to upload to this folder');
       }
@@ -79,6 +94,7 @@ export class FilesService {
 
     const fileType = this.getFileType(file.mimetype);
     const key = `files/${userId}/${uuidv4()}-${file.originalname}`;
+
     try {
       const uploadResult = await this.s3
         .upload({
@@ -89,23 +105,30 @@ export class FilesService {
         })
         .promise();
 
+      console.log('S3 upload successful:', {
+        key,
+        location: uploadResult.Location,
+      });
+
       const createdFile = await this.prisma.file.create({
         data: {
           id: uuidv4(),
           name: file.originalname,
           format: fileType,
-          path: uploadResult.Location,
+          path: key,
           size: file.size,
           ownerId: userId,
-          folderId: folderId ? folderId : null,
+          folderId: normalizedFolderId,
           createdBy: userId,
           updatedBy: userId,
         },
-        include: { folder: true }, // Используем отношение FileToFolder
+        include: { folder: true },
       });
 
       return createdFile;
     } catch (error) {
+      console.error('Error in uploadFile:', error);
+
       throw new InternalServerErrorException(
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
         // @ts-expect-error
@@ -126,6 +149,25 @@ export class FilesService {
   }
 
   async createFolder(name: string, userId: string, parentId?: string) {
+    if (parentId) {
+      const parentFolder = await this.prisma.folder.findUnique({
+        where: { id: parentId },
+      });
+      if (!parentFolder) {
+        throw new NotFoundException(
+          `Parent folder with ID ${parentId} not found`,
+        );
+      }
+      if (
+        parentFolder.ownerId !== userId &&
+        !(await this.hasFolderWritePermission(parentId, userId))
+      ) {
+        throw new ForbiddenException(
+          'No permission to create folder in this parent folder',
+        );
+      }
+    }
+
     return this.prisma.folder.create({
       data: {
         id: uuidv4(),
@@ -135,14 +177,14 @@ export class FilesService {
         createdBy: userId,
         updatedBy: userId,
       },
-      include: { parent: true }, // Используем отношение FolderParent
+      include: { parent: true },
     });
   }
 
   async renameFile(fileId: string, newName: string, userId: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
-      include: { permissions: true }, // Используем отношение FilePermissions
+      include: { permissions: true },
     });
     if (!file) throw new NotFoundException('File not found');
     if (
@@ -154,14 +196,14 @@ export class FilesService {
     return this.prisma.file.update({
       where: { id: fileId },
       data: { name: newName, updatedBy: userId, updatedAt: new Date() },
-      include: { folder: true }, // Используем отношение FileToFolder
+      include: { folder: true },
     });
   }
 
   async deleteFile(fileId: string, userId: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
-      include: { permissions: true }, // Используем отношение FilePermissions
+      include: { permissions: true },
     });
     if (!file) throw new NotFoundException('File not found');
     if (
@@ -170,23 +212,30 @@ export class FilesService {
     )
       throw new ForbiddenException('No permission to delete file');
 
-    // Удаляем файл из MinIO
-    await this.s3
-      .deleteObject({
-        Bucket: this.configService.get('AWS_S3_BUCKET')!,
-        Key: file.path.split('/').slice(-2).join('/'),
-      })
-      .promise();
+    try {
+      await this.s3
+        .deleteObject({
+          Bucket: this.configService.get('AWS_S3_BUCKET')!,
+          Key: file.path,
+        })
+        .promise();
 
-    return this.prisma.file.delete({
-      where: { id: fileId },
-    });
+      return this.prisma.file.delete({
+        where: { id: fileId },
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        `Failed to delete file from storage: ${error.message}`,
+      );
+    }
   }
 
   async moveFile(fileId: string, newFolderId: string | null, userId: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
-      include: { permissions: true }, // Используем отношение FilePermissions
+      include: { permissions: true },
     });
     if (!file) throw new NotFoundException('File not found');
     if (
@@ -195,17 +244,36 @@ export class FilesService {
     )
       throw new ForbiddenException('No permission to move file');
 
+    if (newFolderId) {
+      const newFolder = await this.prisma.folder.findUnique({
+        where: { id: newFolderId },
+      });
+      if (!newFolder) {
+        throw new NotFoundException(
+          `New folder with ID ${newFolderId} not found`,
+        );
+      }
+      if (
+        newFolder.ownerId !== userId &&
+        !(await this.hasFolderWritePermission(newFolderId, userId))
+      ) {
+        throw new ForbiddenException(
+          'No permission to move file to this folder',
+        );
+      }
+    }
+
     return this.prisma.file.update({
       where: { id: fileId },
       data: { folderId: newFolderId, updatedBy: userId, updatedAt: new Date() },
-      include: { folder: true }, // Используем отношение FileToFolder
+      include: { folder: true },
     });
   }
 
   async copyFile(fileId: string, userId: string, newFolderId?: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
-      include: { permissions: true }, // Используем отношение FilePermissions
+      include: { permissions: true },
     });
     if (!file) throw new NotFoundException('File not found');
     if (
@@ -214,32 +282,56 @@ export class FilesService {
     )
       throw new ForbiddenException('No permission to copy file');
 
-    const newKey = `files/${userId}/${uuidv4()}-${file.name}`;
-    await this.s3
-      .copyObject({
-        Bucket: this.configService.get('AWS_S3_BUCKET')!,
-        CopySource: `${this.configService.get('AWS_S3_BUCKET')}/${file.path
-          .split('/')
-          .slice(-2)
-          .join('/')}`,
-        Key: newKey,
-      })
-      .promise();
+    if (newFolderId) {
+      const newFolder = await this.prisma.folder.findUnique({
+        where: { id: newFolderId },
+      });
+      if (!newFolder) {
+        throw new NotFoundException(
+          `New folder with ID ${newFolderId} not found`,
+        );
+      }
+      if (
+        newFolder.ownerId !== userId &&
+        !(await this.hasFolderWritePermission(newFolderId, userId))
+      ) {
+        throw new ForbiddenException(
+          'No permission to copy file to this folder',
+        );
+      }
+    }
 
-    return this.prisma.file.create({
-      data: {
-        id: uuidv4(),
-        name: `Copy of ${file.name}`,
-        format: file.format,
-        path: newKey,
-        size: file.size,
-        ownerId: userId,
-        folderId: newFolderId,
-        createdBy: userId,
-        updatedBy: userId,
-      },
-      include: { folder: true }, // Используем отношение FileToFolder
-    });
+    const newKey = `files/${userId}/${uuidv4()}-${file.name}`;
+    try {
+      await this.s3
+        .copyObject({
+          Bucket: this.configService.get('AWS_S3_BUCKET')!,
+          CopySource: `${this.configService.get('AWS_S3_BUCKET')}/${file.path}`,
+          Key: newKey,
+        })
+        .promise();
+
+      return this.prisma.file.create({
+        data: {
+          id: uuidv4(),
+          name: `Copy of ${file.name}`,
+          format: file.format,
+          path: newKey,
+          size: file.size,
+          ownerId: userId,
+          folderId: newFolderId,
+          createdBy: userId,
+          updatedBy: userId,
+        },
+        include: { folder: true },
+      });
+    } catch (error) {
+      throw new InternalServerErrorException(
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        `Failed to copy file: ${error.message}`,
+      );
+    }
   }
 
   async grantPermission(
@@ -256,6 +348,13 @@ export class FilesService {
     if (file.ownerId !== userId)
       throw new ForbiddenException('Only owner can grant permissions');
 
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+    });
+    if (!targetUser) {
+      throw new NotFoundException(`User with ID ${targetUserId} not found`);
+    }
+
     return this.prisma.filePermission.upsert({
       where: { fileId_userId: { fileId, userId: targetUserId } },
       update: { canRead, canWrite },
@@ -266,14 +365,14 @@ export class FilesService {
         canRead,
         canWrite,
       },
-      include: { file: true, user: true }, // Используем отношения FilePermissions и FilePermissionUser
+      include: { file: true, user: true },
     });
   }
 
   async getPresignedUrl(fileId: string, userId: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
-      include: { permissions: true }, // Используем отношение FilePermissions
+      include: { permissions: true },
     });
     if (!file) throw new NotFoundException('File not found');
     if (
@@ -287,17 +386,80 @@ export class FilesService {
         file.format as FileType,
       )
     ) {
-      return this.s3.getSignedUrlPromise('getObject', {
-        Bucket: this.configService.get<string>('AWS_S3_BUCKET')!,
-        Key: file.path.split('/').slice(-2).join('/'),
-        Expires: 3600, // 1 час
-      });
+      try {
+        return await this.s3.getSignedUrlPromise('getObject', {
+          Bucket: this.configService.get<string>('AWS_S3_BUCKET')!,
+          Key: file.path,
+          Expires: 3600,
+        });
+      } catch (error) {
+        throw new InternalServerErrorException(
+          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+          // @ts-expect-error
+          `Failed to generate presigned URL: ${error.message}`,
+        );
+      }
     }
     throw new ForbiddenException('File type not supported for preview');
   }
 
-  async getUserFilesAndFolders(userId: string, folderId?: string | null) {
-    // Проверяем, существует ли папка, если folderId указан
+  async getFileStream(
+    fileId: string,
+    userId: string,
+  ): Promise<{ stream: Readable; contentType: string; fileName: string }> {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      include: { permissions: true },
+    });
+    if (!file) throw new NotFoundException('File not found');
+    if (
+      file.ownerId !== userId &&
+      !(await this.hasReadPermission(fileId, userId))
+    )
+      throw new ForbiddenException('No permission to view file');
+
+    try {
+      const response = await this.s3
+        .getObject({
+          Bucket: this.configService.get('AWS_S3_BUCKET')!,
+          Key: file.path,
+        })
+        .promise();
+
+      return {
+        stream: Readable.from(response.Body as Buffer),
+        contentType:
+          response.ContentType || this.getMimeType(file.format as FileType),
+        fileName: file.name,
+      };
+    } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-expect-error
+      if (error.code === 'NoSuchKey') {
+        throw new NotFoundException('File not found in storage');
+      }
+      throw new InternalServerErrorException(
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-expect-error
+        `Failed to retrieve file: ${error.message}`,
+      );
+    }
+  }
+
+  private getMimeType(format: FileType): string {
+    switch (format) {
+      case FileType.IMAGE:
+        return 'image/jpeg'; // Можно уточнить тип, если хранить mimeType в базе
+      case FileType.PDF:
+        return 'application/pdf';
+      case FileType.DOCUMENT:
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  async getUserFilesAndFolders(userId: string, folderId?: string) {
     if (folderId) {
       const folder = await this.prisma.folder.findUnique({
         where: { id: folderId },
@@ -310,37 +472,35 @@ export class FilesService {
         throw new ForbiddenException('No permission to view folder');
     }
 
-    // Получаем файлы, принадлежащие пользователю или доступные через разрешения
     const files = await this.prisma.file.findMany({
       where: {
         OR: [
           { ownerId: userId },
           { permissions: { some: { userId, canRead: true } } },
         ],
-        folderId, // Если folderId = null, возвращаются файлы в корне
+        folderId,
       },
       include: {
-        folder: true, // Используем отношение FileToFolder
-        permissions: true, // Используем отношение FilePermissions
-        creator: true, // Используем отношение FileCreatedBy
-        updater: true, // Используем отношение FileUpdatedBy
+        folder: true,
+        permissions: true,
+        creator: true,
+        updater: true,
       },
     });
 
-    // Получаем папки, принадлежащие пользователю или доступные через разрешения
     const folders = await this.prisma.folder.findMany({
       where: {
         OR: [
           { ownerId: userId },
           { permissions: { some: { userId, canRead: true } } },
         ],
-        parentId: folderId, // Если folderId = null, возвращаются корневые папки
+        parentId: folderId,
       },
       include: {
-        parent: true, // Используем отношение FolderParent
-        permissions: true, // Используем отношение FolderPermissions
-        creator: true, // Используем отношение FolderCreatedBy
-        updater: true, // Используем отношение FolderUpdatedBy
+        parent: true,
+        permissions: true,
+        creator: true,
+        updater: true,
         files: {
           where: {
             OR: [
@@ -349,11 +509,11 @@ export class FilesService {
             ],
           },
           include: {
-            folder: true, // Используем отношение FileToFolder
-            permissions: true, // Используем отношение FilePermissions
+            folder: true,
+            permissions: true,
           },
-        }, // Включаем файлы в каждой папке
-        children: true, // Используем отношение FolderParent для вложенных папок
+        },
+        children: true,
       },
     });
 

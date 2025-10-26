@@ -11,6 +11,7 @@ import {
   Query,
   Req,
   UseGuards,
+  StreamableFile,
 } from '@nestjs/common';
 import { FilesService } from './files.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -26,7 +27,6 @@ import {
 import { JwtAuthGuard } from '../auth/guards/jwt.guard';
 import { UploadFileDto } from './dto/upload-file.dto';
 import { CreateFolderDto } from './dto/create-folder.dto';
-import { CreateFieldDto } from '../fields/dto/create-field.dto';
 import { RenameFileDto } from './dto/rename-file.dto';
 import { MoveFileDto } from './dto/move-file.dto';
 import { CopyFileDto } from './dto/copy-file.dto';
@@ -175,6 +175,27 @@ export class FilesController {
     @Req() req: Request & { user: { userId: string } },
   ) {
     return this.filesService.getPresignedUrl(fileId, req.user.userId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get file content' })
+  @ApiResponse({
+    status: 200,
+    description: 'File content retrieved successfully',
+    type: StreamableFile,
+  })
+  @ApiResponse({ status: 404, description: 'File not found' })
+  @ApiResponse({ status: 403, description: 'No permission to view file' })
+  async getFile(
+    @Param('id') fileId: string,
+    @Req() req: Request & { user: { userId: string } },
+  ) {
+    const { stream, contentType, fileName } =
+      await this.filesService.getFileStream(fileId, req.user.userId);
+    return new StreamableFile(stream, {
+      type: contentType,
+      disposition: `inline; filename="${encodeURIComponent(fileName)}"`,
+    });
   }
 
   @Get('user')
