@@ -93,7 +93,23 @@ export class FilesService {
     }
 
     const fileType = this.getFileType(file.mimetype);
-    const key = `files/${userId}/${uuidv4()}-${file.originalname}`;
+    // Декодируем имя файла для корректной обработки кириллицы
+    let fileName: string;
+    try {
+      fileName = decodeURIComponent(file.originalname);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (error) {
+      console.warn(
+        'Failed to decode file name, using original:',
+        file.originalname,
+      );
+      fileName = file.originalname;
+    }
+
+    console.log(`Uploading file ${fileName} to ${folderId}`);
+    // Нормализуем имя файла для ключа в MinIO (заменяем пробелы на подчёркивания)
+    const safeFileName = fileName.replace(/\s+/g, '_');
+    const key = `files/${userId}/${uuidv4()}-${safeFileName}`;
 
     try {
       const uploadResult = await this.s3
@@ -113,7 +129,7 @@ export class FilesService {
       const createdFile = await this.prisma.file.create({
         data: {
           id: uuidv4(),
-          name: file.originalname,
+          name: fileName,
           format: fileType,
           path: key,
           size: file.size,

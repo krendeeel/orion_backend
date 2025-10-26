@@ -29,6 +29,18 @@ import { memoryStorage } from 'multer';
         } else {
           callback(new Error('Invalid file type'), false);
         }
+
+        // Проверяем, что имя файла в UTF-8
+        try {
+          file.originalname = Buffer.from(file.originalname, 'latin1').toString(
+            'utf8',
+          );
+          console.log('Multer decoded filename:', file.originalname);
+          callback(null, true);
+        } catch (error) {
+          console.error('Error decoding filename:', error);
+          callback(new Error('Invalid filename encoding'), false);
+        }
       },
     }),
   ],
