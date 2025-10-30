@@ -52,7 +52,7 @@ export class BasesService {
   async findOne(id: string) {
     return this.prisma.base.findFirst({
       where: { id },
-      include: { fields: true },
+      include: { fields: { include: { options: true } } },
     });
   }
 
