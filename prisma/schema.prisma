@@ -38,6 +38,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  firstName  String?
+  lastName   String?
+  middleName String?
+  age        Int?
+  positionId String?
+
   bases               Base[]
   valuesCreated       Value[]              @relation("ValueCreatedBy")
   valuesUpdated       Value[]              @relation("ValueUpdatedBy")
@@ -51,6 +57,8 @@ model User {
   filesUpdated        File[]               @relation("FileUpdatedBy")
   foldersCreated      Folder[]             @relation("FolderCreatedBy")
   foldersUpdated      Folder[]             @relation("FolderUpdatedBy")
+
+  position Position? @relation(fields: [positionId], references: [id])
 }
 
 model Base {
@@ -210,4 +218,11 @@ model FolderPermission {
   user   User   @relation("FolderPermissionUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([folderId, userId])
+}
+
+model Position {
+  id   String @id @default(uuid())
+  name String
+
+  users User[] @relation
 }
