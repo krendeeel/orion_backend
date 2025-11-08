@@ -13,6 +13,7 @@ import { ValuesModule } from './values/values.module';
 import { MeetingsModule } from './meetings/meetings.module';
 import { FilesModule } from './files/files.module';
 import { OptionsModule } from './options/options.module';
+import { PositionsModule } from './positions/positions.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { OptionsModule } from './options/options.module';
     MeetingsModule,
     FilesModule,
     OptionsModule,
+    PositionsModule,
     ConfigModule.forRoot({ isGlobal: true }),
   ],
   controllers: [AppController],
